@@ -175,11 +175,11 @@ class LabelButton(ctk.CTkLabel):
 
     def set_period(self, period):
         self.set_active(period)
+        self.period_string.set(period)
 
     def set_active(self, period):
         for button in self.label_buttons:
             button.configure(text_color=HIGHLIGHT_COLOR if button.cget('text') == period else TEXT_COLOR)
-        self.period_string.set(period)
 
 
 if __name__ == '__main__':
