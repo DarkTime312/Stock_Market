@@ -9,6 +9,8 @@ import customtkinter as ctk
 import yfinance as yf
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+import matplotlib.dates as mdates
+
 
 from settings import *
 
@@ -155,6 +157,10 @@ class StockFigure(ctk.CTkFrame):
         # Plot the closing prices
         ax.plot(data.index, data['Close'], color=HIGHLIGHT_COLOR)
 
+        # Format x-axis date labels
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+
         # Set the color of x-axis ticks
         ax.tick_params(axis='x', colors=TICK_COLOR)
         # Set the color of y-axis ticks
@@ -187,7 +193,8 @@ class BottomFrame(ctk.CTkFrame):
 
         self.symbol_string = symbol_string
         self.period_string = period_string
-        self.label_buttons = []  # A list containing all the button widgets
+        # Store a reference to the last clicked label
+        self.last_chosen_button = None
 
         self.create_widgets()
 
@@ -205,11 +212,9 @@ class BottomFrame(ctk.CTkFrame):
         # Bind the Enter key on keyboard to draw_the_figure function
         self.entry.bind('<Return>', self.draw_the_figure)
 
+        # Create the LabelButtons
         for time in TIME_OPTIONS:
-            # Create the widget and add it to the list
-            self.label_buttons.append(
-                LabelButton(self, time, self.label_buttons, self.period_string)
-            )
+            LabelButton(self, time, self.period_string)
 
     def draw_the_figure(self, event) -> None:
         """
@@ -223,16 +228,16 @@ class BottomFrame(ctk.CTkFrame):
 
 
 class LabelButton(ctk.CTkLabel):
-    def __init__(self, parent, text, label_buttons, period_string, text_color=TEXT_COLOR):
+    def __init__(self, parent, text, period_string, text_color=TEXT_COLOR):
         super().__init__(master=parent, text=text, text_color=text_color)
-        self.label_buttons = label_buttons
+        self.parent = parent
         self.period_string = period_string
         self.pack(side='right', padx=10)
+
         # Binding left click to run set_period function
         self.bind('<Button-1>', lambda e: self.set_period(period=text))
-        # If it's the last LabelButton object that is created
         # Set the 'Max' as default time period
-        if text == 'Week':
+        if text == 'Max':
             self.set_period('Max')
 
     def set_period(self, period: str) -> None:
@@ -243,21 +248,29 @@ class LabelButton(ctk.CTkLabel):
         :return: None
         """
         # Make the selected period visually distinct
-        self._set_active(period)
+        self._set_active()
         # Change the period_string variable that in turn will set off the
         # drawing logic
         self.period_string.set(period)
 
-    def _set_active(self, period: str) -> None:
+    def _set_active(self) -> None:
         """
         This function will change the color of the selected label to green
         and also will change all the other labels to white
 
-        :param period: The selected period
         :return: None
         """
-        for button in self.label_buttons:
-            button.configure(text_color=HIGHLIGHT_COLOR if button.cget('text') == period else TEXT_COLOR)
+        # If user clicked on the same label again do nothing
+        if self.parent.last_chosen_button is self:
+            return
+
+        # If there's already a label clicked change it color to normal
+        if self.parent.last_chosen_button:
+            self.parent.last_chosen_button.configure(text_color=TEXT_COLOR)
+        # Change the color of the current selected label to green
+        self.configure(text_color=HIGHLIGHT_COLOR)
+        # Store a reference to the current label in parent class
+        self.parent.last_chosen_button = self
 
 
 if __name__ == '__main__':
