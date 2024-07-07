@@ -9,26 +9,21 @@ import customtkinter as ctk
 import yfinance as yf
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
-import matplotlib.dates as mdates
-
 
 from settings import *
 
 
-def get_ny_date() -> datetime.date:
-    """
-    Get the current date in New York.
-
-    We use NY as a reference because the stock exchange is
-    based on NY city.
-
-    :return: a date object representing the current date in NY
-    """
-    ny_time = datetime.now(ZoneInfo("America/New_York"))
-    return ny_time.date()
-
-
 class StockMarket(ctk.CTk):
+    """
+    This class represents the main application window for the Stock Market app.
+    It initializes the window, sets up variables, and creates instances of other components.
+
+    Attributes:
+        symbol_string (ctk.StringVar): Variable to store the current stock symbol.
+        period_string (ctk.StringVar): Variable to store the current time period.
+        cache (dict): A dictionary to store already searched information.
+    """
+
     def __init__(self):
         super().__init__(fg_color=BG_COLOR)
 
@@ -46,7 +41,7 @@ class StockMarket(ctk.CTk):
         self.cache = dict()
 
         StockFigure(self, symbol_string, period_string, self.cache)
-        BottomFrame(self, symbol_string, period_string)
+        UserInputPanel(self, symbol_string, period_string)
 
     def change_titlebar_color(self) -> None:
         """
@@ -64,9 +59,12 @@ class StockMarket(ctk.CTk):
 
 
 class StockFigure(ctk.CTkFrame):
+    """
+    This class represents the frame where the stock data plot is displayed.
+    """
     def __init__(self, parent, symbol_string, period_string, cache):
         super().__init__(master=parent, fg_color=BG_COLOR)
-        self.pack(pady=10, expand=True, fill="both")
+        self.pack(expand=True, fill="both")
 
         self.symbol_string = symbol_string
         self.period_string = period_string
@@ -89,10 +87,10 @@ class StockFigure(ctk.CTkFrame):
         :param args: [Not used] Necessary for trace function to work.
         :return: None
         """
-        # Get the stock symbol from entry box and make sure it's uppercase
+        # Get the stock symbol from symbol_string and make sure it's uppercase
         symbol = self.symbol_string.get().upper()
 
-        # If the entry box is empty abort
+        # If user still haven't selected a symbol, abort
         if not symbol:
             return
         # Get the current selected time period
@@ -102,19 +100,20 @@ class StockFigure(ctk.CTkFrame):
 
         # If it already exists use that data
         if symbol_period in self.cache:
-            print('cache hit')
+            print('Cache hit')
             data = self.cache[symbol_period]
         else:  # If not in cache fetch data
-            print('cache miss')
+            print('Cache miss')
             # Get the ticker object for chosen symbol
             stock = yf.Ticker(symbol)
 
             # Fetch historical data for the specified date range
             match period:
                 case 'Week':
-                    end_date = get_ny_date()
-                    start_date = end_date - timedelta(days=8)
-                    data = stock.history(start=start_date, end=end_date)
+                    end_date = datetime.now()
+                    start_date = end_date - timedelta(days=10)
+                    # Get the last 5 working days
+                    data = stock.history(start=start_date, end=end_date).iloc[-5:]
                 case 'Month':
                     data = stock.history(period='1mo')
                 case '6 Months':
@@ -150,46 +149,37 @@ class StockFigure(ctk.CTkFrame):
         # Create a new Figure object
         fig = Figure()
         # Add a subplot to the figure
-        ax = fig.add_subplot()
+        ax = fig.add_subplot(111)
         # Set the background color of the subplot
         ax.set_facecolor(BG_COLOR)
 
         # Plot the closing prices
-        ax.plot(data.index, data['Close'], color=HIGHLIGHT_COLOR)
-
-        # Format x-axis date labels
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-
-        # Set the color of x-axis ticks
-        ax.tick_params(axis='x', colors=TICK_COLOR)
-        # Set the color of y-axis ticks
-        ax.tick_params(axis='y', colors=HIGHLIGHT_COLOR)
+        ax.plot(data['Close'], color=HIGHLIGHT_COLOR)
 
         # Move the y-axis to the right side
         ax.yaxis.tick_right()
         # Configure y-axis tick parameters
-        ax.tick_params(axis='y', pad=-25, direction='in')
+        ax.tick_params(axis='y', pad=-25, direction='in', colors=HIGHLIGHT_COLOR)
         # Configure x-axis tick parameters
-        ax.tick_params(axis='x', direction='in', pad=-20)
+        ax.tick_params(axis='x', pad=-20, direction='in', colors=TICK_COLOR)
 
         # Create a FigureCanvasTkAgg object to embed the plot in the tkinter window
         canvas = FigureCanvasTkAgg(fig, master=self)
-        # Draw the canvas
-        canvas.draw()
         # Get the tkinter widget from the canvas
         canvas_widget = canvas.get_tk_widget()
-
         canvas_widget.pack(fill="both", expand=True)
 
         # Remove figure edges
         fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
 
-class BottomFrame(ctk.CTkFrame):
+class UserInputPanel(ctk.CTkFrame):
+    """
+    This class represents the panel where user input elements are displayed.
+    """
     def __init__(self, parent, symbol_string, period_string):
-        super().__init__(master=parent, fg_color=INPUT_BG_COLOR, height=50, corner_radius=0)
-        self.pack(side="bottom", fill="x")
+        super().__init__(master=parent, fg_color=INPUT_BG_COLOR, corner_radius=0)
+        self.pack(side="bottom", fill="both")
 
         self.symbol_string = symbol_string
         self.period_string = period_string
@@ -200,13 +190,14 @@ class BottomFrame(ctk.CTkFrame):
 
     def create_widgets(self) -> None:
         """
-        Creates all the widgets.
+        Create entry box and label buttons for user input.
 
         :return: None
         """
         # Create the entry box and place it on the left side
-        self.entry = ctk.CTkEntry(self)
+        self.entry = ctk.CTkEntry(self, fg_color=BG_COLOR, text_color=TEXT_COLOR)
         self.entry.pack(side='left', pady=10, padx=10)
+
         # Add a default text
         self.entry.insert(0, 'AAPL')
         # Bind the Enter key on keyboard to draw_the_figure function
@@ -218,21 +209,24 @@ class BottomFrame(ctk.CTkFrame):
 
     def draw_the_figure(self, event) -> None:
         """
-        Gets the user input from entry box and add it to symbol variable
-        And as a result will trigger the functions that will fetch data and draw the plot.
+        Gets the user input from entry box and adds it to symbol_string variable
+        And as a result it will trigger the functions that will fetch data and draw the plot.
 
-        :param event: [Not used] Is necessary for the binding mechanism
+        :param event: [Not used] Is necessary for the binding mechanism.
         :return: None
         """
         self.symbol_string.set(self.entry.get())
 
 
 class LabelButton(ctk.CTkLabel):
-    def __init__(self, parent, text, period_string, text_color=TEXT_COLOR):
-        super().__init__(master=parent, text=text, text_color=text_color)
+    """
+    This class represents a label button used for selecting time periods in the UserInputPanel.
+    """
+    def __init__(self, parent, text, period_string):
+        super().__init__(master=parent, text=text, text_color=TEXT_COLOR)
         self.parent = parent
         self.period_string = period_string
-        self.pack(side='right', padx=10)
+        self.pack(side='right', padx=10, pady=10)
 
         # Binding left click to run set_period function
         self.bind('<Button-1>', lambda e: self.set_period(period=text))
@@ -242,9 +236,9 @@ class LabelButton(ctk.CTkLabel):
 
     def set_period(self, period: str) -> None:
         """
-        Set the period based on which label user has clicked on
+        Set the time period based on the selected label button.
 
-        :param period: The selected period
+        :param period: The selected time period
         :return: None
         """
         # Make the selected period visually distinct
@@ -256,7 +250,7 @@ class LabelButton(ctk.CTkLabel):
     def _set_active(self) -> None:
         """
         This function will change the color of the selected label to green
-        and also will change all the other labels to white
+        and all the other labels to white
 
         :return: None
         """
@@ -264,7 +258,7 @@ class LabelButton(ctk.CTkLabel):
         if self.parent.last_chosen_button is self:
             return
 
-        # If there's already a label clicked change it color to normal
+        # If there's already a label clicked change its color to normal
         if self.parent.last_chosen_button:
             self.parent.last_chosen_button.configure(text_color=TEXT_COLOR)
         # Change the color of the current selected label to green
