@@ -4,7 +4,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from zoneinfo import ZoneInfo
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from settings import *
 
 try:
@@ -31,8 +31,9 @@ class StockMarket(ctk.CTk):
         # variables
         symbol_string = ctk.StringVar()
         period_string = ctk.StringVar(value='Max')
+        self.cache = dict()
 
-        StockFigure(self, symbol_string, period_string)
+        StockFigure(self, symbol_string, period_string, self.cache)
         BottomFrame(self, symbol_string, period_string)
 
     def change_titlebar_color(self):
@@ -46,53 +47,57 @@ class StockMarket(ctk.CTk):
 
 
 class StockFigure(ctk.CTkFrame):
-    def __init__(self, parent, symbol_string, period_string):
+    def __init__(self, parent, symbol_string, period_string, cache):
         super().__init__(master=parent, fg_color=BG_COLOR)
         self.pack(pady=10, expand=True, fill="both")
         self.symbol_string = symbol_string
         self.period_string = period_string
+        self.cache = cache
 
         symbol_string.trace('w', self.fetch_and_plot)
         period_string.trace('w', self.fetch_and_plot)
-
-        # self.fetch_and_plot()
 
     def fetch_and_plot(self, *args):
         # Get the stock symbol from user
         symbol = self.symbol_string.get().upper()
         if not symbol:
             return
+        period = self.period_string.get()
+        symbol_period = f'{symbol}_{period}'
 
-        # Fetch data for the last week
+        if symbol_period in self.cache:
+            print('cache hit')
+            data = self.cache.get(symbol_period)
+        else:
+            print('cache miss')
+            stock = yf.Ticker(symbol)
 
-        # Create a Ticker object for the specified symbol
-        stock = yf.Ticker(symbol)
+            # Fetch historical data for the specified date range
+            match period:
+                case 'Max':
+                    data = stock.history(period='max')
+                case 'Week':
+                    end_date = get_ny_date()
+                    start_date = end_date - timedelta(days=8)
+                    data = stock.history(start=start_date, end=end_date)
+                case '1 Year':
+                    data = stock.history(period='1y')
 
-        match self.period_string.get():
-            case 'Max':
-                data = stock.history(period='max')
-            case 'Week':
-                end_date = get_ny_date()
-                start_date = end_date - timedelta(days=8)
-                data = stock.history(start=start_date, end=end_date)
-            case '1 Year':
-                data = stock.history(period='1y')
+                case 'Month':
+                    data = stock.history(period='1mo')
 
-            case 'Month':
-                data = stock.history(period='1mo')
+                case '6 Months':
+                    data = stock.history(period='6mo')
 
-            case '6 Months':
-                data = stock.history(period='6mo')
+                case _:
+                    return
 
-            case _:
+            # Check if the data is empty
+            if data.empty:
+                print(f"No data available for {symbol}")
                 return
 
-        # Fetch historical data for the specified date range
-
-        # Check if the data is empty
-        if data.empty:
-            print(f"No data available for {symbol}")
-            return
+            self.cache[symbol_period] = data
 
         # Clear previous plot
         for widget in self.winfo_children():
@@ -106,12 +111,12 @@ class StockFigure(ctk.CTkFrame):
         ax.set_facecolor(BG_COLOR)
 
         # Plot the closing prices
-        ax.plot(data.index, data['Close'], color='#20dca5')
+        ax.plot(data.index, data['Close'], color=HIGHLIGHT_COLOR)
 
         # Set the color of x-axis ticks
         ax.tick_params(axis='x', colors=TICK_COLOR)
         # Set the color of y-axis ticks
-        ax.tick_params(axis='y', colors='#20dca5')
+        ax.tick_params(axis='y', colors=HIGHLIGHT_COLOR)
 
         # Move the y-axis to the right side
         ax.yaxis.tick_right()
@@ -138,6 +143,7 @@ class BottomFrame(ctk.CTkFrame):
     def __init__(self, parent, symbol_string, period_string):
         super().__init__(master=parent, fg_color=INPUT_BG_COLOR, height=50, corner_radius=0)
         self.pack(side="bottom", fill="x")
+
         self.symbol_string = symbol_string
         self.period_string = period_string
 
@@ -148,33 +154,31 @@ class BottomFrame(ctk.CTkFrame):
         self.entry.insert(0, 'AAPL')
         self.entry.pack(side='left', pady=10, padx=10)
         self.entry.bind('<Return>', self.draw_the_figure)
-        self.list = []
+        self.label_buttons = []
 
         for time in TIME_OPTIONS:
-            self.list.append(LabelButton(self, time, self.list, self.period_string))
+            self.label_buttons.append(LabelButton(self, time, self.label_buttons, self.period_string))
 
     def draw_the_figure(self, event):
         self.symbol_string.set(self.entry.get())
 
 
 class LabelButton(ctk.CTkLabel):
-    def __init__(self, parent, text, list, period_string, text_color=TEXT_COLOR):
+    def __init__(self, parent, text, label_buttons, period_string, text_color=TEXT_COLOR):
         super().__init__(master=parent, text=text, text_color=text_color)
-        self.list = list
+        self.label_buttons = label_buttons
         self.period_string = period_string
         self.pack(side='right', padx=10)
         self.bind('<Button-1>', lambda e, x=text: self.set_period(period=x))
-        self.set_period('Max')
+        if text == 'Week':
+            self.set_period('Max')
 
     def set_period(self, period):
         self.set_active(period)
 
     def set_active(self, period):
-        for widget in self.list:
-            if widget.cget('text') == period:
-                widget.configure(text_color=HIGHLIGHT_COLOR)
-            else:
-                widget.configure(text_color='white')
+        for button in self.label_buttons:
+            button.configure(text_color=HIGHLIGHT_COLOR if button.cget('text') == period else TEXT_COLOR)
         self.period_string.set(period)
 
 
